@@ -23,7 +23,7 @@ fn psi(t: Array1<f64>, s: f64) -> Array1<Complex<f64>> {
     let i_s = Complex::new(0.0, s as f64);
     // Psi = c_sigma * (pi^(-1/4))* e^(-1/2 * t^2) * (e^(i*s*t) - kappa_sigma)
     let coeff = Complex::new(c_sigma * (PI.powf(-0.25)), 0.0);
-    let part1 = coeff * t.mapv(|x| ((-0.5 * x * x) + i_s*x).exp());
+    let part1 = t.mapv(|x| ((-0.5 * x * x) + i_s*x).exp()).mapv(|x| coeff * x);
     let part2 = c_sigma * (PI.powf(-0.25)) * kappa_sigma * t.mapv(|x| (-0.5 * x * x).exp());
     part1 - part2
 }

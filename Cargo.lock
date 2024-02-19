@@ -268,8 +268,8 @@ version = "0.1.0"
 dependencies = [
  "bio",
  "hmmm",
- "ndarray 0.15.6",
- "rand 0.8.5",
+ "ndarray 0.13.1",
+ "rand 0.7.3",
  "rayon",
  "rustfft",
 ]
