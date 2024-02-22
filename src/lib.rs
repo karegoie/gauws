@@ -1,4 +1,4 @@
 pub mod cwt;
 pub mod seq;
-pub mod gmp;
+pub mod utils;
 pub mod hmm;

@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 rayon = "1.8.0"
-ndarray = "0.13.1"
+ndarray = "0.15.6"
 rustfft = "6.1.0"
 bio = "1.4.0"
 rand = "0.7.3"

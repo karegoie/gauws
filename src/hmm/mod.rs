@@ -18,18 +18,20 @@ impl Hmm {
                 result.insert(*item, 1.0 / number as f64);
             }
         }
-        let mut prob_sum = 0.0;
-        for item in item_set.iter() {
-            prob_sum += prob[item];
-        }
-        if prob_sum > 0.0 {
-            for item in item_set.iter() {
-                result.insert(*item, prob[item] / prob_sum);
-            }
-        }
         else {
+            let mut prob_sum = 0.0;
             for item in item_set.iter() {
-                result.insert(*item, 0.0);
+                prob_sum += prob.get(item).unwrap_or(&0.0);
+            }
+            if prob_sum > 0.0 {
+                for item in item_set.iter() {
+                    result.insert(*item, prob.get(item).unwrap_or(&0.0) / prob_sum);
+                }
+            }
+            else {
+                for item in item_set.iter() {
+                    result.insert(*item, 0.0);
+                }
             }
         }
         result
@@ -202,13 +204,13 @@ impl Hmm {
         let alpha = self.forward(ys);
         let beta = self.backward(ys);
 
-        let mut gamma:Vec<Vec<f64>> = Vec::new();
+        let mut gamma:Vec<HashMap<usize, f64>> = Vec::new();
         for index in 0..seq_len {
             let mut prob_sum = 0.0;
-            gamma.push(Vec::new());
+            gamma.push(HashMap::new());
             for state in self.states.iter() {
                 let prob = alpha[index][state] * beta[index][state];
-                gamma[index][*state] = prob;
+                gamma.get_mut(index).unwrap().insert(*state, prob);
                 prob_sum += prob;
             }
 
@@ -217,22 +219,26 @@ impl Hmm {
             }
 
             for state in self.states.iter() {
-                gamma[index][*state] /= prob_sum;
+                if let Some(value) = gamma.get_mut(index).and_then(|m| m.get_mut(state)) {
+                    *value /= prob_sum;
+                }
             }
         }
 
-        let mut xi: Vec<Vec<Vec<f64>>> = Vec::new();
+        let mut xi = Vec::new();
         for index in 0..seq_len - 1 {
             let mut prob_sum = 0.0;
-            xi.push(Vec::new());
+            xi.push(HashMap::new());
             for state_from in self.states.iter() {
-                xi.push(Vec::new());
+                xi.get_mut(index).unwrap().insert(*state_from, HashMap::<usize, f64>::new());
                 for state_to in self.states.iter() {
                     let prob = alpha[index][state_from] *
                     beta[index + 1][state_to] *
                     self.trans_prob[state_from][state_to] *
                     self.emit_prob[state_to][&ys[index + 1]];
-                    xi[index][*state_from][*state_to] = prob;
+                    if let Some(inner_map) = xi.get_mut(index).and_then(|m| m.get_mut(state_from)) {
+                        inner_map.insert(*state_to, prob);
+                    }
                     prob_sum += prob;
                 }
             }
@@ -241,8 +247,12 @@ impl Hmm {
             }
 
             for state_from in self.states.iter() {
-                for state_to in self.states.iter() {
-                    xi[index][*state_from][*state_to] /= prob_sum;
+                if let Some(inner_map) = xi.get_mut(index).and_then(|m| m.get_mut(state_from)) {
+                    for state_to in self.states.iter() {
+                        if let Some(value) = inner_map.get_mut(state_to) {
+                            *value /= prob_sum;
+                        }
+                    }
                 }
             }
         }
@@ -251,11 +261,11 @@ impl Hmm {
         let symbols_len = self.symbols.len();
         for state in self.states.iter() {
             self.start_prob.insert(*state, 
-            (gamma[0][*state] + smoothing) / (1.0 + states_len as f64 * smoothing));
+            (gamma[0][state] + smoothing) / (1.0 + states_len as f64 * smoothing));
             
             let mut gamma_sum = 0.0;
             for index in 0..seq_len - 1 {
-                gamma_sum += gamma[index][*state];
+                gamma_sum += gamma[index][state];
             }
 
             if gamma_sum > 0.0 {
@@ -263,7 +273,7 @@ impl Hmm {
                 for state_to in self.states.iter() {
                     let mut xi_sum = 0.0;
                     for index in 0..seq_len - 1 {
-                        xi_sum += xi[index][*state][*state_to];
+                        xi_sum += xi[index][state][state_to];
                     }
                     self.trans_prob.get_mut(state).unwrap().insert(*state_to, (xi_sum + smoothing) / denominator);
                 }
@@ -275,7 +285,7 @@ impl Hmm {
             }
             
             // update emit_prob
-            gamma_sum += gamma[seq_len - 1][*state];
+            gamma_sum += gamma[seq_len - 1][state];
             let mut emit_gamma_sum = HashMap::new();
             for symbol in self.symbols.iter() {
                 emit_gamma_sum.insert(*symbol, 0.0);
@@ -283,7 +293,7 @@ impl Hmm {
 
             for index in 0..seq_len {
                 if let Some(value) = emit_gamma_sum.get_mut(&ys[index]) {
-                    *value += gamma[index][*state];
+                    *value += gamma[index][state];
                 }
             }
 
@@ -381,8 +391,8 @@ mod tests {
 
     #[test]
     fn test_train() {
-        let xs = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
-        let ys = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let xs = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let ys = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
         
         let tol = 0.01;
         let max_iter = 100;
@@ -398,8 +408,8 @@ mod tests {
 
     #[test]
     fn test_evaluate() {
-        let xs = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
-        let ys = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let xs = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let ys = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
         
         let tol = 0.01;
         let max_iter = 10;
@@ -407,7 +417,7 @@ mod tests {
 
         let model = Hmm::train(&xs, &ys, tol, max_iter, smoothing);
 
-        let prob = model.evaluate(&vec![1, 2, 3]);
+        let prob = model.evaluate(&vec![0, 1, 0]);
 
         // Add assertions based on your expected output
         // For example, if you expect the probability to be a certain value, you can assert like this:
@@ -417,8 +427,8 @@ mod tests {
 
     #[test]
     fn test_get_init_model() {
-        let xs = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
-        let ys = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let xs = vec![vec![1, 2, 3, 1, 2, 3], vec![1, 2, 3, 1]];
+        let ys = vec![vec![0, 1, 0, 1, 0, 1], vec![1, 0, 1, 0]];
 
         let model = Hmm::get_init_model(&xs, &ys);
 
