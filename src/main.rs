@@ -14,4 +14,3 @@ mod tests {
     fn test_read_and_cwt() {
         let test_file = std::fs::File::open("")
     }
-}
